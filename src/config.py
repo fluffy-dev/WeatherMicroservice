@@ -35,11 +35,10 @@ class Settings(BaseSettings):
     WEATHER_API_KEY: str
     WEATHER_API_URL: str = "https://api.openweathermap.org/data/2.5"
 
-    # Logic
+    # Logic for celery beat
     CITIES_TO_TRACK: list[str] = ["London", "Almaty", "New York", "Tokyo", "Moscow"]
     UPDATE_INTERVAL_SECONDS: int = 3600
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()
