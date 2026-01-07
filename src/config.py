@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Logic for celery beat
     CITIES_TO_TRACK: list[str] = ["London", "Almaty", "New York", "Tokyo", "Moscow"]
-    UPDATE_INTERVAL_SECONDS: int = 3600
+    UPDATE_INTERVAL_SECONDS: int = 30
 
 
 

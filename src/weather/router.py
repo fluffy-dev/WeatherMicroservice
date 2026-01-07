@@ -19,14 +19,26 @@ async def create_weather(
 
 @router.get("/{city}", response_model=WeatherResponse)
 async def get_weather(
-    city: str,
-    session: AsyncSession = Depends(get_async_session)
+        city: str,
+        session: AsyncSession = Depends(get_async_session)
 ):
-    """Get the latest weather data for a specific city."""
     result = await WeatherService.get_latest_weather(session, city)
-    if not result:
-        raise HTTPException(status_code=404, detail="Weather data not found")
-    return result
+    if result:
+        return result
+
+    client = OpenWeatherClient()
+    external_data = await client.get_weather(city)
+
+    if not external_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"City '{city}' not found in database or external API"
+        )
+
+    weather_schema = WeatherCreate(**external_data)
+    new_record = await WeatherService.create_weather_record(session, weather_schema)
+
+    return new_record
 
 
 @router.patch("/{record_id}", response_model=WeatherResponse)

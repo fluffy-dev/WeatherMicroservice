@@ -1,90 +1,58 @@
-from sqlalchemy import select, delete, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.weather.models import WeatherData
-from src.weather.schemas import WeatherCreate, WeatherUpdate
+from typing import Optional
+
+from src.weather.dependencies import IWeatherRepository
+from src.weather.entity import WeatherEntity
+from src.weather.schemas import WeatherCreate, WeatherUpdate, WeatherResponse
+from src.weather.client import OpenWeatherClient
+
 from src.utils import logger
 
 
 class WeatherService:
     """Service layer for weather business logic."""
 
-    @staticmethod
-    async def create_weather_record(session: AsyncSession, data: WeatherCreate) -> WeatherData:
-        """Creates a new weather record in the database.
+    def __init__(self, repository: IWeatherRepository):
+        self.repo = repository
+        self.openweather_client = OpenWeatherClient()
 
-        Args:
-            session: Database session.
-            data: Weather data schema.
+    async def fetch_weather(self, city: str) -> Optional[WeatherResponse]:
+        """Fetches the latest weather record for a city from OpenWeather API."""
+        raw_weather_data = await self.openweather_client.get_weather(city)
+        weather_entity = WeatherEntity(**raw_weather_data)
 
-        Returns:
-            WeatherData: Created database instance.
-        """
+        city_instance = await self.repo.get_latest_weather(city)
 
-        new_record = WeatherData(**data.model_dump())
-        session.add(new_record)
-        await session.commit()
-        await session.refresh(new_record)
-        logger.info(f"Recorded weather for {new_record.city}")
-        return new_record
+        if city_instance is None:
+            logger.error(f"City {city} not found.")
+            return await self.repo.create_weather_record(weather_entity)
 
-    @staticmethod
-    async def get_latest_weather(session: AsyncSession, city: str) -> WeatherData | None:
-        """Retrieves the latest weather record for a city.
-
-        Args:
-            session: Database session.
-            city: City name.
-
-        Returns:
-            WeatherData | None: The latest record or None.
-        """
-        query = (
-            select(WeatherData)
-            .where(WeatherData.city == city)
-            .order_by(WeatherData.fetched_at.desc())
-            .limit(1)
+        weather_update_data = WeatherUpdate(
+            temperature=weather_entity.temperature,
+            pressure=weather_entity.pressure,
+            humidity=weather_entity.humidity,
         )
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
+        return await self.repo.update_weather_record(city_instance.id, weather_update_data)
 
-    @staticmethod
-    async def update_weather_record(
-            session: AsyncSession,
-            record_id: int,
-            data: WeatherUpdate
-    ) -> WeatherData | None:
-        """Updates an existing weather record.
 
-        Args:
-            session: Database session.
-            record_id: ID of the record.
-            data: Data to update.
-
-        Returns:
-            WeatherData | None: Updated record or None if not found.
-        """
-        query = (
-            update(WeatherData)
-            .where(WeatherData.id == record_id)
-            .values(**data.model_dump(exclude_unset=True))
-            .returning(WeatherData)
+    async def create_weather_record(self, data: WeatherCreate) -> WeatherResponse:
+        """Creates a new weather record in the database."""
+        entity = WeatherEntity(
+            city=data.city,
+            country=data.country,
+            humidity=data.humidity,
+            temperature=data.temperature,
+            pressure=data.pressure,
         )
-        result = await session.execute(query)
-        await session.commit()
-        return result.scalar_one_or_none()
+        return await self.repo.create_weather_record(entity)
 
-    @staticmethod
-    async def delete_weather_record(session: AsyncSession, record_id: int) -> bool:
-        """Deletes a weather record.
+    async def get_latest_weather(self, city: str) -> Optional[WeatherResponse]:
+        """Retrieves latest weather from Database"""
+        return await self.repo.get_latest_weather(city)
 
-        Args:
-            session: Database session.
-            record_id: ID of the record.
+    async def update_weather_record(self, record_id: int, data: WeatherUpdate) -> Optional[WeatherResponse]:
+        """Updates an existing weather record."""
+        return await self.repo.update_weather_record(record_id, data)
 
-        Returns:
-            bool: True if deleted, False otherwise.
-        """
-        query = delete(WeatherData).where(WeatherData.id == record_id)
-        result = await session.execute(query)
-        await session.commit()
-        return result.rowcount > 0
+    async def delete_weather_record(self, record_id: int) -> bool:
+        """Deletes a weather record."""
+        return await self.repo.delete_weather_record(record_id)
