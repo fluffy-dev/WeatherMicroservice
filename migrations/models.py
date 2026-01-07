@@ -1,0 +1,1 @@
+from src.weather.models import *
