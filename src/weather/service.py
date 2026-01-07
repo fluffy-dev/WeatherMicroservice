@@ -19,9 +19,6 @@ class WeatherService:
         Returns:
             WeatherData: Created database instance.
         """
-        # Logic: If record exists for city, we can either append new history or update latest.
-        # Requirement says "write and overwrite". We will append new log for history
-        # but for this specific task API, let's treat it as a log.
 
         new_record = WeatherData(**data.model_dump())
         session.add(new_record)
