@@ -34,9 +34,9 @@ async def test_get_weather_success():
             result = await client.get_weather("London")
 
             assert result is not None
-            assert result["city"] == "London"
-            assert result["temperature"] == 15.5
-            assert result["country"] == "GB"
+            assert result.city == "London"
+            assert result.temperature == 15.5
+            assert result.country == "GB"
 
 
 @pytest.mark.asyncio

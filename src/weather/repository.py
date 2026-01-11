@@ -1,9 +1,8 @@
-from typing import Optional
-
 from sqlalchemy import select, delete, update
 from src.weather.models import WeatherData
 from src.weather.schemas import WeatherUpdate, WeatherResponse
 from src.weather.entity import WeatherEntity
+from src.weather.exceptions import WeatherNotFound
 
 from src.database import ISession
 
@@ -15,15 +14,15 @@ class WeatherRepository:
         self.session = session
 
     async def create_weather_record(self, data: WeatherEntity) -> WeatherResponse:
-        """Creates a new weather record in the database.
+        """
+        Creates a new weather record in the database.
 
         Args:
-            data: Weather data schema.
+            data (WeatherEntity): The weather data entity to persist.
 
         Returns:
-            WeatherData: Created database instance.
+            WeatherResponse: The created weather record as a DTO.
         """
-
         new_record = WeatherData(
             city=data.city,
             country=data.country,
@@ -36,14 +35,18 @@ class WeatherRepository:
         await self.session.refresh(new_record)
         return self._to_dto(new_record)
 
-    async def get_latest_weather(self, city: str) -> Optional[WeatherResponse]:
-        """Retrieves the latest weather record for a city.
+    async def get_latest_weather(self, city: str) -> WeatherResponse:
+        """
+        Retrieves the latest weather record for a specific city.
 
         Args:
-            city: City name.
+            city (str): The name of the city.
 
         Returns:
-            WeatherData | None: The latest record or None.
+            WeatherResponse: The latest weather record.
+
+        Raises:
+            WeatherNotFound: If no weather data exists for the specified city.
         """
         query = (
             select(WeatherData)
@@ -53,22 +56,29 @@ class WeatherRepository:
         )
         raw = await self.session.execute(query)
         result = raw.scalar_one_or_none()
-        return self._to_dto(result) if raw else None
-
+        
+        if not result:
+            raise WeatherNotFound(f"Weather data for city '{city}' not found.")
+            
+        return self._to_dto(result)
 
     async def update_weather_record(
             self,
             record_id: int,
             data: WeatherUpdate
-    ) -> Optional[WeatherResponse]:
-        """Updates an existing weather record.
+    ) -> WeatherResponse:
+        """
+        Updates an existing weather record.
 
         Args:
-            record_id: ID of the record.
-            data: Data to update.
+            record_id (int): The ID of the record to update.
+            data (WeatherUpdate): The data to update.
 
         Returns:
-            WeatherData | None: Updated record or None if not found.
+            WeatherResponse: The updated weather record.
+
+        Raises:
+            WeatherNotFound: If the weather record with the given ID does not exist.
         """
         query = (
             update(WeatherData)
@@ -79,24 +89,32 @@ class WeatherRepository:
         raw = await self.session.execute(query)
         await self.session.commit()
         result = raw.scalar_one_or_none()
-        return self._to_dto(result) if raw else None
+        
+        if not result:
+            raise WeatherNotFound(f"Weather record with ID {record_id} not found.")
 
-    async def delete_weather_record(self, record_id: int) -> bool:
-        """Deletes a weather record.
+        return self._to_dto(result)
+
+    async def delete_weather_record(self, record_id: int) -> None:
+        """
+        Deletes a weather record from the database.
 
         Args:
-            record_id: ID of the record.
+            record_id (int): The ID of the record to delete.
 
-        Returns:
-            bool: True if deleted, False otherwise.
+        Raises:
+            WeatherNotFound: If the weather record with the given ID does not exist.
         """
         query = delete(WeatherData).where(WeatherData.id == record_id)
         result = await self.session.execute(query)
         await self.session.commit()
-        return result.rowcount > 0
+        
+        if result.rowcount == 0:
+            raise WeatherNotFound(f"Weather record with ID {record_id} not found.")
 
     @staticmethod
     def _to_dto(instance: WeatherData) -> WeatherResponse:
+        """Converts a database model instance to a Data Transfer Object."""
         return WeatherResponse(
             id=instance.id,
             city=instance.city,

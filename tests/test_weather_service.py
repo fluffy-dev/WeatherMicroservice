@@ -1,13 +1,18 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.weather.repository import WeatherRepository
 from src.weather.service import WeatherService
 from src.weather.schemas import WeatherCreate, WeatherUpdate
+from src.weather.exceptions import WeatherNotFound
 
 
 @pytest.mark.asyncio
 async def test_create_and_get_weather(db_session: AsyncSession):
     """Test creating a record and retrieving the latest one."""
+    repo = WeatherRepository(db_session)
+    service = WeatherService(repo)
+
     weather_data = WeatherCreate(
         city="ServiceCity",
         country="SC",
@@ -17,12 +22,12 @@ async def test_create_and_get_weather(db_session: AsyncSession):
     )
 
     # 1. Create
-    created = await WeatherService.create_weather_record(db_session, weather_data)
+    created = await service.create_weather_record(weather_data)
     assert created.id is not None
     assert created.city == "ServiceCity"
 
     # 2. Get Latest
-    fetched = await WeatherService.get_latest_weather(db_session, "ServiceCity")
+    fetched = await service.get_latest_weather("ServiceCity")
     assert fetched is not None
     assert fetched.id == created.id
     assert fetched.temperature == 10.5
@@ -31,22 +36,24 @@ async def test_create_and_get_weather(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_get_latest_weather_ordering(db_session: AsyncSession):
     """Test that get_latest_weather returns the most recent record."""
+    repo = WeatherRepository(db_session)
+    service = WeatherService(repo)
     city_name = "TimeCity"
 
     # Create older record
     data1 = WeatherCreate(
         city=city_name, country="TC", temperature=10.0, humidity=50, pressure=1000
     )
-    await WeatherService.create_weather_record(db_session, data1)
+    await service.create_weather_record(data1)
 
     # Create newer record
     data2 = WeatherCreate(
         city=city_name, country="TC", temperature=20.0, humidity=60, pressure=1005
     )
-    await WeatherService.create_weather_record(db_session, data2)
+    await service.create_weather_record(data2)
 
     # Fetch
-    latest = await WeatherService.get_latest_weather(db_session, city_name)
+    latest = await service.get_latest_weather(city_name)
     assert latest is not None
     # Should be the second one (higher temp)
     assert latest.temperature == 20.0
@@ -55,15 +62,18 @@ async def test_get_latest_weather_ordering(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_update_weather(db_session: AsyncSession):
     """Test updating an existing record."""
+    repo = WeatherRepository(db_session)
+    service = WeatherService(repo)
+
     # Create initial
     data = WeatherCreate(
         city="UpdateCity", country="UC", temperature=0.0, humidity=0, pressure=1000
     )
-    created = await WeatherService.create_weather_record(db_session, data)
+    created = await service.create_weather_record(data)
 
     # Update
     update_data = WeatherUpdate(temperature=25.5, humidity=80)
-    updated = await WeatherService.update_weather_record(db_session, created.id, update_data)
+    updated = await service.update_weather_record(created.id, update_data)
 
     assert updated is not None
     assert updated.temperature == 25.5
@@ -74,15 +84,17 @@ async def test_update_weather(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_delete_weather(db_session: AsyncSession):
     """Test deleting a record."""
+    repo = WeatherRepository(db_session)
+    service = WeatherService(repo)
+
     data = WeatherCreate(
         city="DeleteCity", country="DC", temperature=0.0, humidity=0, pressure=1000
     )
-    created = await WeatherService.create_weather_record(db_session, data)
+    created = await service.create_weather_record(data)
 
     # Delete
-    success = await WeatherService.delete_weather_record(db_session, created.id)
-    assert success is True
+    await service.delete_weather_record(created.id)
 
     # Verify deletion
-    fetched = await WeatherService.get_latest_weather(db_session, "DeleteCity")
-    assert fetched is None
+    with pytest.raises(WeatherNotFound):
+        await service.get_latest_weather("DeleteCity")

@@ -1,9 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, status
 
-from src.database import get_async_session
+from src.weather.dependencies import IWeatherService
 from src.weather.schemas import WeatherCreate, WeatherResponse, WeatherUpdate
-from src.weather.service import WeatherService
 
 router = APIRouter(prefix="/weather", tags=["Weather"])
 
@@ -11,55 +9,70 @@ router = APIRouter(prefix="/weather", tags=["Weather"])
 @router.post("/", response_model=WeatherResponse, status_code=status.HTTP_201_CREATED)
 async def create_weather(
     weather: WeatherCreate,
-    session: AsyncSession = Depends(get_async_session)
+    service: IWeatherService
 ):
-    """Create a new manual weather entry."""
-    return await WeatherService.create_weather_record(session, weather)
+    """
+    Creates a new manual weather entry.
+
+    Args:
+        weather (WeatherCreate): The weather data to create.
+        service (IWeatherService): The weather service.
+
+    Returns:
+        WeatherResponse: The created weather record.
+    """
+    return await service.create_weather_record(weather)
 
 
 @router.get("/{city}", response_model=WeatherResponse)
 async def get_weather(
         city: str,
-        session: AsyncSession = Depends(get_async_session)
+        service: IWeatherService
 ):
-    result = await WeatherService.get_latest_weather(session, city)
-    if result:
-        return result
+    """
+    Retrieves weather data for a specific city.
+    Connects to external API if data is not available or outdated (logic inside service).
 
-    client = OpenWeatherClient()
-    external_data = await client.get_weather(city)
+    Args:
+        city (str): The name of the city.
+        service (IWeatherService): The weather service.
 
-    if not external_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"City '{city}' not found in database or external API"
-        )
-
-    weather_schema = WeatherCreate(**external_data)
-    new_record = await WeatherService.create_weather_record(session, weather_schema)
-
-    return new_record
+    Returns:
+        WeatherResponse: The weather data.
+    """
+    return await service.fetch_weather(city)
 
 
 @router.patch("/{record_id}", response_model=WeatherResponse)
 async def update_weather(
     record_id: int,
     weather: WeatherUpdate,
-    session: AsyncSession = Depends(get_async_session)
+    service: IWeatherService
 ):
-    """Update a specific weather record."""
-    result = await WeatherService.update_weather_record(session, record_id, weather)
-    if not result:
-        raise HTTPException(status_code=404, detail="Record not found")
-    return result
+    """
+    Updates a specific weather record.
+
+    Args:
+        record_id (int): The ID of the record to update.
+        weather (WeatherUpdate): The data to update.
+        service (IWeatherService): The weather service.
+
+    Returns:
+        WeatherResponse: The updated weather record.
+    """
+    return await service.update_weather_record(record_id, weather)
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_weather(
     record_id: int,
-    session: AsyncSession = Depends(get_async_session)
+    service: IWeatherService
 ):
-    """Delete a weather record."""
-    deleted = await WeatherService.delete_weather_record(session, record_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Record not found")
+    """
+    Deletes a weather record.
+
+    Args:
+        record_id (int): The ID of the record to delete.
+        service (IWeatherService): The weather service.
+    """
+    await service.delete_weather_record(record_id)

@@ -40,7 +40,7 @@ async def test_get_weather_not_found(client: AsyncClient):
     """Test GET /weather/{city} for non-existent city."""
     response = await client.get("/weather/NonExistentCity")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Weather data not found"
+    assert response.json()["detail"] == "Weather data for city 'NonExistentCity' not found."
 
 
 @pytest.mark.asyncio
